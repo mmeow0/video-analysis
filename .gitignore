@@ -161,6 +161,7 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-metadata.json
+metadata_yolov8.json
+yolov8n.pt
 *.mp4
 *.caffemodel
