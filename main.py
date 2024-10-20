@@ -1,6 +1,7 @@
 import cv2
 import json
 import numpy as np
+import requests
 from ultralytics import YOLO
 import logging
 
@@ -15,19 +16,22 @@ def convert_to_standard_types(data):
         return data.cpu().numpy().tolist()
     return data
 
-def extract_metadata(video_path):
+def extract_metadata(video_path, server_url):
     try:
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             logging.error(f"Не удалось открыть видеофайл: {video_path}")
             return
 
+        # Получаем количество кадров в секунду (FPS)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+
         frame_count = 0
         metadata = []
         previous_frame = None
         movement_threshold = 10000
         model = YOLO('yolov8n.pt')
-        frame_skip = 24  # Пропускать 23 кадра
+        frame_skip = 2  # через фрейм пропускать
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -72,21 +76,35 @@ def extract_metadata(video_path):
                 'frame': frame_count,
                 'avg_color': avg_color,
                 'movement_status': movement_status,
-                'detected_objects': objects
+                'detected_objects': objects,
+                'fps': fps
             })
 
             frame_count += 1
 
         cap.release()
-        
+
         with open('metadata_yolov8.json', 'w') as f:
             json.dump(convert_to_standard_types(metadata), f, indent=4)
 
         logging.info("Метаданные успешно сохранены в metadata_yolov8.json")
+
+        with open(video_path, 'rb') as video_file:
+            files = {
+                'video': (video_path, video_file, 'video/mp4'),
+                'metadata': ('metadata_yolov8.json', open('metadata_yolov8.json', 'rb'), 'application/json')
+            }
+            response = requests.post(server_url, files=files)
+
+        if response.status_code == 200:
+            logging.info("Данные успешно отправлены на сервер.")
+        else:
+            logging.error(f"Ошибка при отправке данных на сервер: {response.status_code} - {response.text}")
 
     except Exception as e:
         logging.error(f"Произошла ошибка: {e}")
 
 if __name__ == "__main__":
     video_path = 'rickroll.mp4'
-    extract_metadata(video_path)
+    server_url = 'http://localhost:5043/upload'
+    extract_metadata(video_path, server_url)
