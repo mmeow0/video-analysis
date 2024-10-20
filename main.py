@@ -27,17 +27,24 @@ def extract_metadata(video_path):
         previous_frame = None
         movement_threshold = 10000
         model = YOLO('yolov8n.pt')
+        frame_skip = 24  # Пропускать 23 кадра
 
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
             
+            if frame_count % frame_skip != 0:
+                frame_count += 1
+                continue
+
+            frame = cv2.resize(frame, (640, 480))  # Уменьшение разрешения для оптимизации
             gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             gray_frame = cv2.GaussianBlur(gray_frame, (21, 21), 0)
 
             if previous_frame is None:
                 previous_frame = gray_frame
+                frame_count += 1
                 continue
 
             frame_diff = cv2.absdiff(previous_frame, gray_frame)
