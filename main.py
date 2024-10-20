@@ -1,3 +1,4 @@
+import os
 import cv2
 import json
 import numpy as np
@@ -84,20 +85,25 @@ def extract_metadata(video_path, server_url):
 
         cap.release()
 
-        with open('metadata_yolov8.json', 'w') as f:
+        video_filename = os.path.basename(video_path)
+        metadata_filename = f"{os.path.splitext(video_filename)[0]}.json"
+
+        with open(metadata_filename, 'w') as f:
             json.dump(convert_to_standard_types(metadata), f, indent=4)
 
-        logging.info("Метаданные успешно сохранены в metadata_yolov8.json")
+        logging.info(f"Метаданные успешно сохранены в {metadata_filename}")
 
         with open(video_path, 'rb') as video_file:
             files = {
-                'video': (video_path, video_file, 'video/mp4'),
-                'metadata': ('metadata_yolov8.json', open('metadata_yolov8.json', 'rb'), 'application/json')
+                'video': (video_filename, video_file, 'video/mp4'),
+                'metadata': (metadata_filename, open(metadata_filename, 'rb'), 'application/json')
             }
             response = requests.post(server_url, files=files)
 
         if response.status_code == 200:
             logging.info("Данные успешно отправлены на сервер.")
+            os.remove(metadata_filename)
+            logging.info(f"Локальный файл {metadata_filename} удалён.")
         else:
             logging.error(f"Ошибка при отправке данных на сервер: {response.status_code} - {response.text}")
 
