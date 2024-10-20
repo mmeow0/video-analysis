@@ -13,14 +13,13 @@ def convert_to_standard_types(data):
         return data.item()  # Преобразование numpy типов (например, float32) в стандартные Python типы
     return data
 
-def extract_metadata(video_path):
+def extract_metadata(video_path, movement_threshold=10000, confidence_threshold=0.2):
     cap = cv2.VideoCapture(video_path)
     frame_count = 0
     metadata = []
 
     # Переменные для детекции движения
     previous_frame = None
-    movement_threshold = 10000  # Пороговое значение для движения
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -55,7 +54,7 @@ def extract_metadata(video_path):
         objects = []
         for i in range(detections.shape[2]):
             confidence = detections[0, 0, i, 2]
-            if confidence > 0.2:
+            if confidence > confidence_threshold:
                 idx = int(detections[0, 0, i, 1])
                 objects.append({
                     'object_id': idx,
@@ -65,16 +64,16 @@ def extract_metadata(video_path):
         # Пример извлечения цветового профиля кадра
         avg_color_per_row = frame.mean(axis=0)
         avg_color = avg_color_per_row.mean(axis=0)
-        
+
         # Преобразуем значения цветов из numpy типов в стандартные float
         avg_color = convert_to_standard_types(avg_color)
-        
+
         # Добавим метаданные для каждого кадра
         metadata.append({
             'frame': frame_count,
             'avg_color': avg_color,  # Преобразованные значения цветов
             'movement_status': movement_status,
-            'detected_objects': objects
+            'detected_objects': {obj['object_id']: obj['confidence'] for obj in objects}  # Преобразуем в словарь
         })
 
         frame_count += 1
