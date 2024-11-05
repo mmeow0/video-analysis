@@ -90,7 +90,6 @@ names = {
     78: 'фен',
     79: 'зубная щетка'
 }
-
 def convert_to_standard_types(data):
     if isinstance(data, np.ndarray):
         return data.tolist()
@@ -100,13 +99,11 @@ def convert_to_standard_types(data):
         return data.cpu().numpy().tolist()
     return data
 
-
-app = Flask(__name__, static_folder='../static', static_url_path='/static')  # Укажите правильный путь к статической папке
+app = Flask(__name__, static_folder='../static', static_url_path='/static')
 UPLOAD_FOLDER = 'uploads'  # Папка для загрузки в пределах static/uploads
 app.config['UPLOAD_FOLDER'] = os.path.join(app.static_folder, UPLOAD_FOLDER)
 
-latest_video = None
-latest_metadata_path = None
+uploaded_videos = {}
 
 @app.route('/')
 def index():
@@ -114,62 +111,60 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_video():
-    global latest_video, latest_metadata_path
-
     video_file = request.files['video']
     if not video_file:
         return jsonify({'error': 'Файл не предоставлен'}), 400
 
     video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_file.filename)
     video_file.save(video_path)
-    latest_video = video_path
 
     # Проверка на существование метаданных
     metadata_filename = f"{os.path.splitext(video_file.filename)[0]}_metadata.json"
     metadata_path = os.path.join(app.config['UPLOAD_FOLDER'], metadata_filename)
 
-    video_exists = os.path.exists(video_path)
-    metadata_exists = os.path.exists(metadata_path)
-
+    uploaded_videos[video_file.filename] = {
+        'video_path': video_path,
+        'metadata_path': metadata_path,
+        'metadata_exists': os.path.exists(metadata_path)
+    }
+    print(url_for('static', filename=f'uploads/{video_file.filename}', _external=True))
     return jsonify({
         'video_path': url_for('static', filename=f'uploads/{video_file.filename}', _external=True),
-        'video_exists': video_exists,
-        'metadata_exists': metadata_exists
+        'metadata_exists': uploaded_videos[video_file.filename]['metadata_exists']
     })
 
+@app.route('/generate_metadata/<filename>', methods=['POST'])
+def generate_metadata(filename=''):
+    if filename not in uploaded_videos:
+        return jsonify({'error': 'Нет загруженного видео'}), 400
 
-@app.route('/generate-metadata', methods=['POST'])
-def generate_metadata():
-    global latest_video, latest_metadata_path
-    if not latest_video:
-        return jsonify({'error': 'Видео не загружено'}), 400
+    latest_video = uploaded_videos[filename]
+    metadata, metadata_filename = extract_metadata(latest_video['video_path'])
 
-    metadata, metadata_filename = extract_metadata(latest_video)
-    latest_metadata_path = url_for('static', filename=f'uploads/{metadata_filename}', _external=True)  # Путь к метаданным
+    latest_video['metadata_path'] = url_for('static', filename=f'uploads/{metadata_filename}', _external=True)
 
-    return jsonify({'metadata': metadata, 'metadata_path': latest_metadata_path})
+    return jsonify({'metadata': metadata, 'metadata_path': latest_video['metadata_path']})
 
-# Обработчик для загрузки существующего видео и метаданных
-@app.route('/load-existing', methods=['GET'])
-def load_existing():
-    global latest_video, latest_metadata_path
-    if not latest_video or not os.path.exists(latest_video):
+@app.route('/load_metadata/<filename>', methods=['GET'])
+def load_existing(filename=''):
+    if filename not in uploaded_videos:
         return jsonify({'error': 'Нет загруженного видео.'}), 400
 
-    # Загружаем метаданные
-    metadata_filename = f"{os.path.splitext(os.path.basename(latest_video))[0]}_metadata.json"
-    metadata_path = os.path.join(app.config['UPLOAD_FOLDER'], metadata_filename)
+    latest_video = uploaded_videos[filename]
 
-    if not os.path.exists(metadata_path):
+    if not os.path.exists(latest_video['video_path']):
+        return jsonify({'error': 'Нет загруженного видео.'}), 400
+
+    if not os.path.exists(latest_video['metadata_path']):
         return jsonify({'error': 'Метаданные не найдены.'}), 400
 
-    with open(metadata_path, 'r') as f:
+    with open(latest_video['metadata_path'], 'r') as f:
         metadata = json.load(f)
 
     return jsonify({
-        'video_path': url_for('static', filename=f'uploads/{os.path.basename(latest_video)}', _external=True),
+        'video_path': url_for('static', filename=f'uploads/{filename}', _external=True),
         'metadata': metadata,
-        'metadata_path': url_for('static', filename=f'uploads/{metadata_filename}', _external=True)
+        'metadata_path': latest_video['metadata_path']
     })
 
 # Функция создания метаданных
@@ -177,7 +172,7 @@ def extract_metadata(video_path):
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         logging.error(f"Не удалось открыть видеофайл: {video_path}")
-        return
+        return None, None
 
     # Получаем количество кадров в секунду (FPS)
     fps = cap.get(cv2.CAP_PROP_FPS)
