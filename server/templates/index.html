@@ -1,162 +1,238 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Видео и Метаданные</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link
+      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+      rel="stylesheet"
+    />
     <style>
-        .disabled {
-            background-color: rgba(75, 85, 99, 0.5); /* Полупрозрачный фон */
-            color: rgba(255, 255, 255, 0.5); /* Полупрозрачный текст */
-            cursor: not-allowed; /* Курсор 'не разрешено' */
-        }
+      .disabled {
+        background-color: rgba(75, 85, 99, 0.5); /* Полупрозрачный фон */
+        color: rgba(255, 255, 255, 0.5); /* Полупрозрачный текст */
+        cursor: not-allowed; /* Курсор 'не разрешено' */
+      }
+
+      .metadata-container {
+        max-height: 400px; /* Установите максимальную высоту по вашему усмотрению */
+        overflow-y: auto; /* Включить вертикальную прокрутку */
+      }
     </style>
-</head>
-<body class="bg-gray-900 text-white">
+  </head>
+  <body class="bg-gray-900 text-white">
     <div class="container mx-auto py-8">
-        <h1 class="text-3xl font-bold text-center mb-6">Загрузка видео и генерация метаданных</h1>
-
-        <div class="upload-container mb-6">
-            <form id="upload-form" enctype="multipart/form-data" class="flex flex-col items-center">
-                <input type="file" id="video-upload" name="video" accept="video/mp4" class="border border-gray-700 rounded-md p-2 mb-2 w-full max-w-xs bg-gray-800 text-white">
-                <button type="submit" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">Загрузить видео</button>
-            </form>
-            <div class="mt-4">
-                <button id="generate-metadata" class="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 disabled" disabled>Сгенерировать метаданные</button>
-                <button id="load-existing" class="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 ml-2 disabled" disabled>Загрузить существующее видео</button>
-            </div>
+      <h1 class="text-3xl font-bold text-center mb-6">
+        Система детектирования подмены видеопотока при помощи машинного обучения
+      </h1>
+      <div class="upload-container mb-6">
+        <form
+          id="upload-form"
+          enctype="multipart/form-data"
+          class="flex flex-row items-center gap-4"
+        >
+          <input
+            type="file"
+            id="video-upload"
+            name="video"
+            accept="video/mp4"
+            class="border border-gray-700 rounded-md p-2 w-full max-w-xs bg-gray-800 text-white"
+          />
+          <button
+            type="submit"
+            class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 hidden"
+          >
+            Загрузить видео
+          </button>
+        </form>
+        <div id="metadata-button-container" class="mt-4 hidden">
+          <span>Метаданные: </span>
+          <button
+            id="generate-metadata"
+            class="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 disabled"
+            disabled
+          >
+            Сгенерировать новые
+          </button>
+          <button
+            id="load-existing"
+            class="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 ml-2 disabled"
+            disabled
+          >
+            Загрузить существующие
+          </button>
         </div>
-
-        <div class="content flex flex-col md:flex-row mt-4 w-[90%] overflow-hidden">
-            <video id="video-player" controls class="mr-2 mb-4 md:mb-0 w-1/2 hidden">
-                <source id="video-source" type="video/mp4">
-                Ваш браузер не поддерживает видео.
-            </video>
-
-            <div class="metadata-container bg-gray-800 rounded-lg shadow-md p-4 w-1/2 hidden" id="metadata-container">
-                <h2 class="text-xl font-semibold">Метаданные</h2>
-                <div id="metadata-content" class="mt-2"></div>
-                <a id="metadata-download" class="text-blue-400 underline mt-4 hidden">Скачать метаданные (JSON)</a>
-            </div>
+      </div>
+      <div class="flex flex-row mt-4">
+        <div class="content flex flex-col overflow-hidden w-1/3">
+          <video id="video-player" controls class="mr-2 mb-4 md:mb-0 hidden">
+            <source id="video-source" type="video/mp4" />
+            Ваш браузер не поддерживает видео.
+          </video>
+          <div
+            class="metadata-container bg-gray-800 rounded-lg shadow-md p-4 hidden"
+            id="metadata-container"
+          >
+            <h2 class="text-xl font-semibold">Метаданные</h2>
+            <a
+              id="metadata-download"
+              class="text-blue-400 underline mt-4 hidden"
+              >Скачать метаданные (JSON)</a
+            >
+            <div id="metadata-content" class="mt-2"></div>
+          </div>
         </div>
+        <div class="w-1/3"></div>
+        <div class="w-1/3"></div>
+      </div>
     </div>
 
     <script>
-        const uploadForm = document.getElementById('upload-form');
-        const generateButton = document.getElementById('generate-metadata');
-        const loadExistingButton = document.getElementById('load-existing');
-        const videoPlayer = document.getElementById('video-player');
-        const videoSource = document.getElementById('video-source');
-        const metadataContainer = document.getElementById('metadata-container');
-        const metadataContent = document.getElementById('metadata-content');
-        const metadataDownload = document.getElementById('metadata-download');
-        let metadata = null;
+      const uploadForm = document.getElementById("upload-form");
+      const metadataButtonContainer = document.getElementById(
+        "metadata-button-container"
+      );
+      const generateButton = document.getElementById("generate-metadata");
+      const loadExistingButton = document.getElementById("load-existing");
+      const videoPlayer = document.getElementById("video-player");
+      const videoSource = document.getElementById("video-source");
+      const metadataContainer = document.getElementById("metadata-container");
+      const metadataContent = document.getElementById("metadata-content");
+      const metadataDownload = document.getElementById("metadata-download");
+      const videoUploadInput = document.getElementById("video-upload");
+      const uploadButton = document.querySelector('button[type="submit"]');
+      let metadata = null;
+      let isMetadataExists = false;
 
-        // Загрузка видео
-        uploadForm.addEventListener('submit', async (event) => {
-            event.preventDefault();
-            const formData = new FormData(uploadForm);
-            
-            const response = await fetch('/upload', {
-                method: 'POST',
-                body: formData
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                videoSource.src = data.video_path;
+      videoUploadInput.addEventListener("change", () => {
+        if (videoUploadInput.files.length > 0) {
+          // Удаляем класс hidden у кнопки загрузки, если файл выбран
+          uploadButton.classList.remove("hidden");
+        } else {
+          // В случае, если файл не выбран, можно скрыть кнопку снова (если это необходимо)
+          uploadButton.classList.add("hidden");
+        }
+      });
+      // Загрузка видео
+      uploadForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const formData = new FormData(uploadForm);
 
-                videoPlayer.classList.remove('hidden');
-                videoPlayer.load();
-
-                generateButton.disabled = false;  // Разблокировать кнопку генерации метаданных
-                loadExistingButton.disabled = false; // Разблокировать кнопку загрузки существующего видео
-                
-                // Удалить класс 'disabled'
-                generateButton.classList.remove('disabled');
-                loadExistingButton.classList.remove('disabled');
-
-                alert('Видео загружено. Теперь можно сгенерировать метаданные.');
-            } else {
-                alert('Ошибка при загрузке видео.');
-            }
+        const response = await fetch("/upload", {
+          method: "POST",
+          body: formData,
         });
 
-        // Генерация метаданных
-        generateButton.addEventListener('click', async () => {
-            const response = await fetch('/generate-metadata', { method: 'POST' });
-            
-            if (response.ok) {
-                const data = await response.json();
+        if (response.ok) {
+          const data = await response.json();
+          videoSource.src = data.video_path;
 
-                // Показываем контейнер метаданных и ссылку на загрузку
-                metadataContainer.classList.remove('hidden');
-                metadataDownload.href = data.metadata_path;  // Устанавливаем путь к метаданным
-                metadataDownload.classList.remove('hidden');
-                metadataDownload.classList.add('inline');  // Показываем ссылку на загрузку
+          videoPlayer.classList.remove("hidden");
+          videoPlayer.load();
 
-                alert('Метаданные сгенерированы.');
-            } else {
-                alert('Ошибка при генерации метаданных.');
-            }
-        });
+          metadataButtonContainer.classList.remove("hidden");
 
-        // Загрузка существующего видео
-        loadExistingButton.addEventListener('click', async () => {
-            const response = await fetch('/load-existing', { method: 'GET' });
+          generateButton.disabled = false;
+          generateButton.classList.remove("disabled");
 
-            if (response.ok) {
-                const data = await response.json();
-                videoSource.src = data.video_path;
+          if (data.metadata_exists) {
+            loadExistingButton.disabled = false;
+            loadExistingButton.classList.remove("disabled");
+          } else {
+          }
 
-                // Показываем видео и метаданные
-                videoPlayer.classList.remove('hidden');
-                videoPlayer.load();
-                metadata = data.metadata;
+          alert("Видео загружено. Теперь можно сгенерировать метаданные.");
+        } else {
+          alert("Ошибка при загрузке видео.");
+        }
+      });
 
-                metadataContainer.classList.remove('hidden');
-                metadataDownload.href = data.metadata_path;
-                metadataDownload.classList.remove('hidden');  // Показываем ссылку на загрузку
-                metadataDownload.classList.add('inline');
+      // Генерация метаданных
+      generateButton.addEventListener("click", async () => {
+        const response = await fetch("/generate-metadata", { method: "POST" });
 
-                alert('Загружено существующее видео и метаданные.');
-            } else {
-                alert('Ошибка при загрузке существующего видео.');
-            }
-        });
+        if (response.ok) {
+          const data = await response.json();
 
-        let currentFrameData = null;
-        videoPlayer.addEventListener('timeupdate', () => {
-            const fps = metadata[0].fps; // Предполагаем, что FPS одинаков для всех кадров
-            const currentTime = videoPlayer.currentTime;
-            const currentFrame = Math.floor(currentTime * fps);
-            const frameData = metadata.find(data => data.frame === currentFrame);
+          // Показываем контейнер метаданных и ссылку на загрузку
+          metadataContainer.classList.remove("hidden");
+          metadata = data.metadata;
+          metadataDownload.href = data.metadata_path; // Устанавливаем путь к метаданным
+          metadataDownload.classList.remove("hidden");
+          metadataDownload.classList.add("inline"); // Показываем ссылку на загрузку
 
-            if (frameData && frameData !== currentFrameData) {
-                currentFrameData = frameData; // Сохраняем новые данные как текущие
+          alert("Метаданные сгенерированы.");
+        } else {
+          alert("Ошибка при генерации метаданных.");
+        }
+      });
 
-                const itemHTML = `
+      // Загрузка существующего видео
+      loadExistingButton.addEventListener("click", async () => {
+        const response = await fetch("/load-existing", { method: "GET" });
+
+        if (response.ok) {
+          const data = await response.json();
+          videoSource.src = data.video_path;
+
+          // Показываем видео и метаданные
+          videoPlayer.classList.remove("hidden");
+          videoPlayer.load();
+          metadata = data.metadata;
+
+          metadataContainer.classList.remove("hidden");
+          metadataDownload.href = data.metadata_path;
+          metadataDownload.classList.remove("hidden"); // Показываем ссылку на загрузку
+          metadataDownload.classList.add("inline");
+
+          alert("Загружено существующее видео и метаданные.");
+        } else {
+          alert("Ошибка при загрузке существующего видео.");
+        }
+      });
+
+      let currentFrameData = null;
+      videoPlayer.addEventListener("timeupdate", () => {
+        const fps = metadata[0].fps; // Предполагаем, что FPS одинаков для всех кадров
+        const currentTime = videoPlayer.currentTime;
+        const currentFrame = Math.floor(currentTime * fps);
+        const frameData = metadata.find((data) => data.frame === currentFrame);
+
+        if (frameData && frameData !== currentFrameData) {
+          currentFrameData = frameData; // Сохраняем новые данные как текущие
+
+          const itemHTML = `
                     <div class="metadata-item mb-4">
-                        <h3 class="text-lg font-semibold">Кадр ${frameData.frame}</h3>
-                        <div class="metadata-content">
-                            <p><strong>Средний цвет:</strong> ${frameData.avg_color}</p>
-                            <p><strong>Статус движения:</strong> ${frameData.movement_status}</p>
+                        <h3 class="text-md font-semibold">Кадр ${
+                          frameData.frame
+                        }</h3>
+                        <div class="metadata-content break-words">
+                            <p><strong>Средний цвет:</strong> ${
+                              frameData.avg_color
+                            }</p>
+                            <p><strong>Статус движения:</strong> ${
+                              frameData.movement_status
+                            }</p>
                             <h4 class="font-semibold">Обнаруженные объекты:</h4>
-                            <ul class="list-disc pl-5">
-                                ${frameData.detected_objects.map(obj => `
+                            <ul class="list-disc pl-5 break-words">
+                                ${frameData.detected_objects
+                                  .map(
+                                    (obj) => `
                                     <li>
                                         <strong>ID объекта:</strong> ${obj.object_id} <br>
                                         <strong>Уверенность:</strong> ${obj.confidence} <br>
                                         <strong>Координаты:</strong> ${obj.bbox}
                                     </li>
-                                `).join('')}
+                                `
+                                  )
+                                  .join("")}
                             </ul>
                         </div>
                     </div>`;
-                metadataContent.innerHTML = itemHTML;
-            }
-        });
+          metadataContent.innerHTML = itemHTML;
+        }
+      });
     </script>
-</body>
+  </body>
 </html>

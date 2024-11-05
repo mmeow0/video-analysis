@@ -4,7 +4,7 @@ import json
 import numpy as np
 from ultralytics import YOLO
 import logging
-from typing import List, Dict, Any
+import tensorflow as tf
 
 logging.basicConfig(level=logging.INFO)
 
@@ -17,73 +17,82 @@ def convert_to_standard_types(data):
         return data.cpu().numpy().tolist()
     return data
 
-def find_object(objects, target):
-    for obj in objects:
-        if obj['object_id'] == target['object_id']:
-            return obj
-    return None
+def extract_features(data, max_objects=5):  # max_objects - максимальное количество объектов
+    features = []
+    for entry in data:
+        object_features = []
+        for obj in entry["detected_objects"][:max_objects]:  # Берем только до max_objects
+            object_features.append(obj['object_id'])
+            object_features.append(obj['confidence'])
+        # Если меньше max_objects, заполняем пустыми значениями
+        while len(object_features) < max_objects * 2:
+            object_features.append(0)  # Или используйте 0, если это более целесообразно
+        features.append(object_features)
+    # logging.info(f"Frame {features}")
+    return np.array(features, dtype=float)
 
-def compare_frames(frame_a, frame_b) -> List[Dict[str, Any]]:
-    errors = []
+def train_autoencoder(data):
+    feature_dim = data.shape[1]
+    autoencoder = tf.keras.models.Sequential([
+        tf.keras.layers.Input(shape=(feature_dim,)),  # Используем Input вместо input_shape
+        tf.keras.layers.Dense(64, activation='relu'),
+        tf.keras.layers.Dense(32, activation='relu'),
+        tf.keras.layers.Dense(64, activation='relu'),
+        tf.keras.layers.Dense(feature_dim, activation='sigmoid')
+    ])
+    autoencoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss=tf.keras.losses.MeanSquaredError())
+    autoencoder.fit(data, data, epochs=50, batch_size=16, shuffle=True)
+    return autoencoder
 
-    detected_objects_a = frame_a['detected_objects']
-    detected_objects_b = frame_b['detected_objects']
-    
-    new_objects_in_b = []
+def normalize_features(features):
+    # Применяем нормализацию
+    return (features - np.mean(features, axis=0)) / np.std(features, axis=0)
 
-    for obj_b in detected_objects_b:
-        match = find_object(detected_objects_a, obj_b)
-        if not match:
-            new_objects_in_b.append(obj_b)
+def sort_detected_objects(objects):
+    return sorted(objects, key=lambda x: (x['object_id'], x['confidence']))
 
-    if new_objects_in_b:
-        errors.append({
-            'frame_b': frame_b['frame'],
-            'error': 'Different detected_objects',
-            'detected_new_object': [obj['object_id'] for obj in new_objects_in_b]
-        })
-    
-    return errors
+def compare_detected_objects(original_objects, new_objects):
+    # Сравниваем отсортированные объекты
+    sorted_original = sort_detected_objects(original_objects)
+    sorted_new = sort_detected_objects(new_objects)
 
-# Функция для сравнения двух JSON-файлов с допуском по кадрам
-def compare_videos(metadata_a: List[Dict[str, Any]], metadata_b: List[Dict[str, Any]], frame_tolerance=10) -> List[Dict[str, Any]]:
+    return sorted_original == sorted_new
+
+# Функция для выявления аномалий
+def detect_anomalies(original_metadata, new_metadata, autoencoder, threshold=5.0):
+    original_features = extract_features(original_metadata)
+    new_features = extract_features(new_metadata)
+
+    if original_features.size == 0 or new_features.size == 0:
+        logging.error("Нет доступных признаков для сравнения.")
+        return []
+
+    original_features = normalize_features(original_features)
+    new_features = normalize_features(new_features)
+
+    reconstructed = autoencoder.predict(new_features)
+    mse = np.mean(np.power(new_features - reconstructed, 2), axis=1)
+
     discrepancies = []
-    frames_b = {frame['frame']: frame for frame in metadata_b}
+    for i, error in enumerate(mse):
+        if error > threshold:
+            original_objects = original_metadata[i]['detected_objects']
+            new_objects = new_metadata[i]['detected_objects']
 
-    for frame_a in metadata_a:
-        frame = frame_a['frame']
-        errors_count = 0
-        total_frames_checked = 0
-        detailed_errors = []
-
-        # Проверка ближайших кадров в диапазоне tolerance
-        for delta in range(-frame_tolerance, frame_tolerance + 1):
-            frame_b = frames_b.get(frame + delta)
-            if frame_b:
-                total_frames_checked += 1
-                errors = compare_frames(frame_a, frame_b)
-                if errors:
-                    errors_count += 1
-                    for error in errors:
-                        compact_error = {
-                            'frame_b': error['frame_b'],
-                            'error': error['error'],
-                            'detected_new_object': error.get('detected_new_object', [])
-                        }
-                        detailed_errors.append(compact_error)
-
-        # Проверяем, если ошибки были во всех проверяемых кадрах
-        if total_frames_checked > 0 and errors_count == total_frames_checked:
-            discrepancies.append({
-                'frame_a': frame,
-                'errors': detailed_errors
-            })
-
+            # Сравнение объектов
+            objects_are_equal = compare_detected_objects(original_objects, new_objects)
+            if not objects_are_equal:
+                discrepancy = {
+                    'frame': new_metadata[i]['frame'],
+                    'original_detected_objects': original_objects,
+                    'new_detected_objects': new_objects,
+                    'error': f'Anomaly detected with MSE: {error}'
+                }
+                discrepancies.append(discrepancy)
     return discrepancies
 
 def create_metadata(video_path):
     try:
-        # Инициализация модели и видео
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             logging.error(f"Не удалось открыть видеофайл: {video_path}")
@@ -147,7 +156,6 @@ def create_metadata(video_path):
             frame_count += 1
 
         cap.release()
-
         return new_metadata
 
     except Exception as e:
@@ -155,7 +163,7 @@ def create_metadata(video_path):
         return []
 
 if __name__ == "__main__":
-    video_path = 'rickroll_bad.mp4'
+    video_path = 'rickroll_fake.mp4'
     original_metadata_path = 'rickroll.json'
     output_discrepancy_path = 'discrepancies.json'
 
@@ -176,8 +184,21 @@ if __name__ == "__main__":
         with open(new_metadata_filename, 'r') as f:
             new_metadata = json.load(f)
 
-    discrepancies = compare_videos(original_metadata, new_metadata)
+    # Извлечение признаков для обучения автоэнкодера
+    original_features = extract_features(original_metadata)
+    logging.info(f"Original features shape: {original_features.shape}")
 
+    if original_features.size == 0:
+        logging.error("Нет доступных признаков для обучения автоэнкодера.")
+        exit()
+
+    # Обучение автоэнкодера
+    autoencoder = train_autoencoder(original_features)
+
+    # Выявление аномалий
+    discrepancies = detect_anomalies(original_metadata, new_metadata, autoencoder)
+
+    # Сохранение несоответствий
     with open(output_discrepancy_path, 'w') as f:
         json.dump(discrepancies, f, indent=4)
         logging.info(f"Несоответствия сохранены в {output_discrepancy_path}")

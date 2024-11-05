@@ -31,7 +31,7 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_video():
-    global latest_video
+    global latest_video, latest_metadata_path
 
     video_file = request.files['video']
     if not video_file:
@@ -41,7 +41,19 @@ def upload_video():
     video_file.save(video_path)
     latest_video = video_path
 
-    return jsonify({'video_path': url_for('static', filename=f'uploads/{video_file.filename}', _external=True)})
+    # Проверка на существование метаданных
+    metadata_filename = f"{os.path.splitext(video_file.filename)[0]}_metadata.json"
+    metadata_path = os.path.join(app.config['UPLOAD_FOLDER'], metadata_filename)
+
+    video_exists = os.path.exists(video_path)
+    metadata_exists = os.path.exists(metadata_path)
+
+    return jsonify({
+        'video_path': url_for('static', filename=f'uploads/{video_file.filename}', _external=True),
+        'video_exists': video_exists,
+        'metadata_exists': metadata_exists
+    })
+
 
 @app.route('/generate-metadata', methods=['POST'])
 def generate_metadata():
