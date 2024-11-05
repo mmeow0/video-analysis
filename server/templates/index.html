@@ -120,6 +120,18 @@
         </div>
         <div class="w-1/5 flex flex-col justify-center items-center">
           <div class="spinner" id="spinner" role="status"></div>
+          <p
+            id="upload-instruction"
+            class="bg-gray-800 p-4 rounded-md text-gray-400 shadow-md text-center"
+          >
+            Загрузите или сгенерируйте метаданные для обоих видео
+          </p>
+          <button
+            id="analyze-button"
+            class="bg-blue-600 text-white py-2 px-4 mt-4 rounded-md hover:bg-blue-700 hidden"
+          >
+            Проанализировать
+          </button>
         </div>
         <div class="bg-red-900 p-4 rounded-lg shadow-lg w-2/5">
           <form
@@ -186,6 +198,9 @@
     <div id="notification" class="notification"></div>
 
     <script>
+      const analyzeButton = document.getElementById("analyze-button");
+      const uploadInstruction = document.getElementById("upload-instruction");
+
       const uploadForms = [
         document.getElementById("upload-form1"),
         document.getElementById("upload-form2"),
@@ -233,6 +248,14 @@
       const spinner = document.getElementById("spinner");
       const notification = document.getElementById("notification");
       let metadata = [null, null];
+      let metadataLoadedStatus = [false, false];
+
+      function checkBothVideosUploaded() {
+        if (metadataLoadedStatus.every((status) => status)) {
+          analyzeButton.classList.remove("hidden");
+          uploadInstruction.classList.add("hidden");
+        }
+      }
 
       function toggleUploadButton(index) {
         const fileInput = videoUploads[index];
@@ -292,6 +315,10 @@
         });
       });
 
+      analyzeButton.addEventListener("click", () => {
+        // Ваша логика анализа после нажатия кнопки "Проанализировать"
+      });
+
       const showNotification = (message) => {
         notification.innerText = message;
         notification.style.opacity = 1;
@@ -315,6 +342,8 @@
             metadata[index] = data.metadata;
             metadataDownloads[index].href = data.metadata_path;
             metadataDownloads[index].classList.remove("hidden");
+            metadataLoadedStatus[index] = true;
+            checkBothVideosUploaded();
             showNotification("Метаданные успешно сгенерированы!");
           } else {
             console.error("Ошибка при генерации метаданных.");
@@ -334,6 +363,8 @@
             metadata[index] = data.metadata;
             metadataDownloads[index].href = data.metadata_path;
             metadataDownloads[index].classList.remove("hidden");
+            metadataLoadedStatus[index] = true;
+            checkBothVideosUploaded();
             showNotification("Существующие метаданные успешно загружены!");
           } else {
             console.error("Ошибка при загрузке существующих метаданных.");
