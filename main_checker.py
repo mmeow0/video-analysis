@@ -46,7 +46,7 @@ def compare_frames(frame_a, frame_b) -> List[Dict[str, Any]]:
     return errors
 
 # Функция для сравнения двух JSON-файлов с допуском по кадрам
-def compare_videos(metadata_a: List[Dict[str, Any]], metadata_b: List[Dict[str, Any]], frame_tolerance=3) -> List[Dict[str, Any]]:
+def compare_videos(metadata_a: List[Dict[str, Any]], metadata_b: List[Dict[str, Any]], frame_tolerance=10) -> List[Dict[str, Any]]:
     discrepancies = []
     frames_b = {frame['frame']: frame for frame in metadata_b}
 

@@ -3,111 +3,158 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video streamin with metadata</title>
+    <title>Видео и Метаданные</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
-            margin: 20px;
-        }
-        video {
-            width: 100%;
-            max-width: 600px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
-        .metadata {
-            background-color: #fff;
-            padding: 15px;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        .frame-info {
-            margin: 10px 0;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
-        .detected-objects {
-            margin-top: 10px;
-            background-color: #f9f9f9;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+        .disabled {
+            background-color: rgba(75, 85, 99, 0.5); /* Полупрозрачный фон */
+            color: rgba(255, 255, 255, 0.5); /* Полупрозрачный текст */
+            cursor: not-allowed; /* Курсор 'не разрешено' */
         }
     </style>
 </head>
-<body>
-    <h1>Video with Metadata</h1>
-    <video id="video" controls>
-        <source src="{{ video_path }}" type="video/mp4">
-        Your browser does not support the video tag.
-    </video>
-    <div class="metadata" id="metadata" data-metadata='{{ metadata | tojson | safe }}'>
-        <h2>Metadata</h2>
-        <div class="frame-info" id="frame-info">
-            <table>
-                <tr>
-                    <th>Frame</th>
-                    <td id="frame-number"></td>
-                </tr>
-                <tr>
-                    <th>Average Color</th>
-                    <td id="avg-color"></td>
-                </tr>
-                <tr>
-                    <th>Movement Status</th>
-                    <td id="movement-status"></td>
-                </tr>
-                <tr>
-                    <th>Detected Objects</th>
-                    <td id="detected-objects" class="detected-objects"></td>
-                </tr>
-            </table>
+<body class="bg-gray-900 text-white">
+    <div class="container mx-auto py-8">
+        <h1 class="text-3xl font-bold text-center mb-6">Загрузка видео и генерация метаданных</h1>
+
+        <div class="upload-container mb-6">
+            <form id="upload-form" enctype="multipart/form-data" class="flex flex-col items-center">
+                <input type="file" id="video-upload" name="video" accept="video/mp4" class="border border-gray-700 rounded-md p-2 mb-2 w-full max-w-xs bg-gray-800 text-white">
+                <button type="submit" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700">Загрузить видео</button>
+            </form>
+            <div class="mt-4">
+                <button id="generate-metadata" class="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 disabled" disabled>Сгенерировать метаданные</button>
+                <button id="load-existing" class="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 ml-2 disabled" disabled>Загрузить существующее видео</button>
+            </div>
+        </div>
+
+        <div class="content flex flex-col md:flex-row mt-4 w-[90%] overflow-hidden">
+            <video id="video-player" controls class="mr-2 mb-4 md:mb-0 w-1/2 hidden">
+                <source id="video-source" type="video/mp4">
+                Ваш браузер не поддерживает видео.
+            </video>
+
+            <div class="metadata-container bg-gray-800 rounded-lg shadow-md p-4 w-1/2 hidden" id="metadata-container">
+                <h2 class="text-xl font-semibold">Метаданные</h2>
+                <div id="metadata-content" class="mt-2"></div>
+                <a id="metadata-download" class="text-blue-400 underline mt-4 hidden">Скачать метаданные (JSON)</a>
+            </div>
         </div>
     </div>
 
     <script>
-        const metadataElement = document.getElementById('metadata');
-        const metadata = JSON.parse(metadataElement.getAttribute('data-metadata'));
-        const video = document.getElementById('video');
+        const uploadForm = document.getElementById('upload-form');
+        const generateButton = document.getElementById('generate-metadata');
+        const loadExistingButton = document.getElementById('load-existing');
+        const videoPlayer = document.getElementById('video-player');
+        const videoSource = document.getElementById('video-source');
+        const metadataContainer = document.getElementById('metadata-container');
+        const metadataContent = document.getElementById('metadata-content');
+        const metadataDownload = document.getElementById('metadata-download');
+        let metadata = null;
 
-        const fps = metadata[0].fps; // Предполагаем, что FPS одинаков для всех кадров
+        // Загрузка видео
+        uploadForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const formData = new FormData(uploadForm);
+            
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                videoSource.src = data.video_path;
+
+                videoPlayer.classList.remove('hidden');
+                videoPlayer.load();
+
+                generateButton.disabled = false;  // Разблокировать кнопку генерации метаданных
+                loadExistingButton.disabled = false; // Разблокировать кнопку загрузки существующего видео
+                
+                // Удалить класс 'disabled'
+                generateButton.classList.remove('disabled');
+                loadExistingButton.classList.remove('disabled');
+
+                alert('Видео загружено. Теперь можно сгенерировать метаданные.');
+            } else {
+                alert('Ошибка при загрузке видео.');
+            }
+        });
+
+        // Генерация метаданных
+        generateButton.addEventListener('click', async () => {
+            const response = await fetch('/generate-metadata', { method: 'POST' });
+            
+            if (response.ok) {
+                const data = await response.json();
+
+                // Показываем контейнер метаданных и ссылку на загрузку
+                metadataContainer.classList.remove('hidden');
+                metadataDownload.href = data.metadata_path;  // Устанавливаем путь к метаданным
+                metadataDownload.classList.remove('hidden');
+                metadataDownload.classList.add('inline');  // Показываем ссылку на загрузку
+
+                alert('Метаданные сгенерированы.');
+            } else {
+                alert('Ошибка при генерации метаданных.');
+            }
+        });
+
+        // Загрузка существующего видео
+        loadExistingButton.addEventListener('click', async () => {
+            const response = await fetch('/load-existing', { method: 'GET' });
+
+            if (response.ok) {
+                const data = await response.json();
+                videoSource.src = data.video_path;
+
+                // Показываем видео и метаданные
+                videoPlayer.classList.remove('hidden');
+                videoPlayer.load();
+                metadata = data.metadata;
+
+                metadataContainer.classList.remove('hidden');
+                metadataDownload.href = data.metadata_path;
+                metadataDownload.classList.remove('hidden');  // Показываем ссылку на загрузку
+                metadataDownload.classList.add('inline');
+
+                alert('Загружено существующее видео и метаданные.');
+            } else {
+                alert('Ошибка при загрузке существующего видео.');
+            }
+        });
+
         let currentFrameData = null;
-
-        video.addEventListener('timeupdate', () => {
-            const currentTime = video.currentTime;
+        videoPlayer.addEventListener('timeupdate', () => {
+            const fps = metadata[0].fps; // Предполагаем, что FPS одинаков для всех кадров
+            const currentTime = videoPlayer.currentTime;
             const currentFrame = Math.floor(currentTime * fps);
             const frameData = metadata.find(data => data.frame === currentFrame);
 
             if (frameData && frameData !== currentFrameData) {
                 currentFrameData = frameData; // Сохраняем новые данные как текущие
 
-                // Обновляем информацию о кадре
-                document.getElementById('frame-number').textContent = currentFrameData.frame;
-                document.getElementById('avg-color').textContent = currentFrameData.avg_color.join(', ');
-                document.getElementById('movement-status').textContent = currentFrameData.movement_status;
-
-                // Обновляем информацию о детектированных объектах
-                const detectedObjectsHTML = currentFrameData.detected_objects.map(obj => `
-                    <div>
-                        <strong>Object ID:</strong> ${obj.object_id}<br>
-                        <strong>Confidence:</strong> ${obj.confidence}<br>
-                        <strong>Bounding Box:</strong> [${obj.bbox.join(', ')}]
-                    </div>
-                `).join('');
-                document.getElementById('detected-objects').innerHTML = detectedObjectsHTML;
+                const itemHTML = `
+                    <div class="metadata-item mb-4">
+                        <h3 class="text-lg font-semibold">Кадр ${frameData.frame}</h3>
+                        <div class="metadata-content">
+                            <p><strong>Средний цвет:</strong> ${frameData.avg_color}</p>
+                            <p><strong>Статус движения:</strong> ${frameData.movement_status}</p>
+                            <h4 class="font-semibold">Обнаруженные объекты:</h4>
+                            <ul class="list-disc pl-5">
+                                ${frameData.detected_objects.map(obj => `
+                                    <li>
+                                        <strong>ID объекта:</strong> ${obj.object_id} <br>
+                                        <strong>Уверенность:</strong> ${obj.confidence} <br>
+                                        <strong>Координаты:</strong> ${obj.bbox}
+                                    </li>
+                                `).join('')}
+                            </ul>
+                        </div>
+                    </div>`;
+                metadataContent.innerHTML = itemHTML;
             }
         });
     </script>
