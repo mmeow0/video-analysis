@@ -1,238 +1,200 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Видео и Метаданные</title>
-    <link
-      href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
-      rel="stylesheet"
-    />
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
     <style>
-      .disabled {
-        background-color: rgba(75, 85, 99, 0.5); /* Полупрозрачный фон */
-        color: rgba(255, 255, 255, 0.5); /* Полупрозрачный текст */
-        cursor: not-allowed; /* Курсор 'не разрешено' */
-      }
+        .disabled {
+            background-color: rgba(75, 85, 99, 0.5);
+            color: rgba(255, 255, 255, 0.5);
+            cursor: not-allowed;
+        }
 
-      .metadata-container {
-        max-height: 400px; /* Установите максимальную высоту по вашему усмотрению */
-        overflow-y: auto; /* Включить вертикальную прокрутку */
-      }
+        .metadata-container {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .spinner {
+            display: none;
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-top: 4px solid rgba(255, 255, 255, 1);
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(34, 197, 94, 0.9);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
     </style>
-  </head>
-  <body class="bg-gray-900 text-white">
+</head>
+<body class="bg-gray-900 text-white">
     <div class="container mx-auto py-8">
-      <h1 class="text-3xl font-bold text-center mb-6">
-        Система детектирования подмены видеопотока при помощи машинного обучения
-      </h1>
-      <div class="upload-container mb-6">
-        <form
-          id="upload-form"
-          enctype="multipart/form-data"
-          class="flex flex-row items-center gap-4"
-        >
-          <input
-            type="file"
-            id="video-upload"
-            name="video"
-            accept="video/mp4"
-            class="border border-gray-700 rounded-md p-2 w-full max-w-xs bg-gray-800 text-white"
-          />
-          <button
-            type="submit"
-            class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 hidden"
-          >
-            Загрузить видео
-          </button>
-        </form>
-        <div id="metadata-button-container" class="mt-4 hidden">
-          <span>Метаданные: </span>
-          <button
-            id="generate-metadata"
-            class="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 disabled"
-            disabled
-          >
-            Сгенерировать новые
-          </button>
-          <button
-            id="load-existing"
-            class="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 ml-2 disabled"
-            disabled
-          >
-            Загрузить существующие
-          </button>
+        <h1 class="text-3xl font-bold text-center mb-6">Система детектирования подмены видеопотока при помощи машинного обучения</h1>
+
+        <div class="upload-container mb-6">
+            <form id="upload-form" enctype="multipart/form-data" class="flex flex-row items-center gap-4">
+                <input type="file" id="video-upload" name="video" accept="video/mp4" class="border border-gray-700 rounded-md p-2 w-full max-w-xs bg-gray-800 text-white" />
+                <button type="submit" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 hidden">Загрузить видео</button>
+            </form>
+
+            <div id="metadata-button-container" class="mt-4 hidden">
+                <span>Метаданные: </span>
+                <button id="generate-metadata" class="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 disabled" disabled>Сгенерировать новые</button>
+                <button id="load-existing" class="bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700 ml-2 disabled" disabled>Загрузить существующие</button>
+            </div>
+            <div id="spinner" class="spinner mt-2"></div>
         </div>
-      </div>
-      <div class="flex flex-row mt-4">
-        <div class="content flex flex-col overflow-hidden w-1/3">
-          <video id="video-player" controls class="mr-2 mb-4 md:mb-0 hidden">
-            <source id="video-source" type="video/mp4" />
-            Ваш браузер не поддерживает видео.
-          </video>
-          <div
-            class="metadata-container bg-gray-800 rounded-lg shadow-md p-4 hidden"
-            id="metadata-container"
-          >
-            <h2 class="text-xl font-semibold">Метаданные</h2>
-            <a
-              id="metadata-download"
-              class="text-blue-400 underline mt-4 hidden"
-              >Скачать метаданные (JSON)</a
-            >
-            <div id="metadata-content" class="mt-2"></div>
-          </div>
+
+        <div class="flex flex-row mt-4">
+            <div class="content flex flex-col overflow-hidden w-2/5">
+                <video id="video-player" controls class="mr-2 mb-4 md:mb-0 hidden">
+                    <source id="video-source" type="video/mp4" />
+                    Ваш браузер не поддерживает видео.
+                </video>
+                <div id="metadata-container" class="metadata-container bg-gray-800 rounded-lg shadow-md p-4 hidden">
+                    <h2 class="text-xl font-semibold">Метаданные</h2>
+                    <a id="metadata-download" class="text-blue-400 underline mt-4 hidden">Скачать метаданные (JSON)</a>
+                    <div id="metadata-content" class="mt-2"></div>
+                </div>
+            </div>
+            <div class="w-1/5"></div>
+            <div class="w-2/5"></div>
         </div>
-        <div class="w-1/3"></div>
-        <div class="w-1/3"></div>
-      </div>
     </div>
 
+    <div id="notification" class="notification"></div>
+
     <script>
-      const uploadForm = document.getElementById("upload-form");
-      const metadataButtonContainer = document.getElementById(
-        "metadata-button-container"
-      );
-      const generateButton = document.getElementById("generate-metadata");
-      const loadExistingButton = document.getElementById("load-existing");
-      const videoPlayer = document.getElementById("video-player");
-      const videoSource = document.getElementById("video-source");
-      const metadataContainer = document.getElementById("metadata-container");
-      const metadataContent = document.getElementById("metadata-content");
-      const metadataDownload = document.getElementById("metadata-download");
-      const videoUploadInput = document.getElementById("video-upload");
-      const uploadButton = document.querySelector('button[type="submit"]');
-      let metadata = null;
-      let isMetadataExists = false;
+        const uploadForm = document.getElementById("upload-form");
+        const videoUploadInput = document.getElementById("video-upload");
+        const uploadButton = document.querySelector('button[type="submit"]');
+        const metadataButtonContainer = document.getElementById("metadata-button-container");
+        const generateButton = document.getElementById("generate-metadata");
+        const loadExistingButton = document.getElementById("load-existing");
+        const videoPlayer = document.getElementById("video-player");
+        const videoSource = document.getElementById("video-source");
+        const metadataContainer = document.getElementById("metadata-container");
+        const metadataContent = document.getElementById("metadata-content");
+        const metadataDownload = document.getElementById("metadata-download");
+        const spinner = document.getElementById("spinner");
+        const notification = document.getElementById("notification");
+        let metadata = null;
 
-      videoUploadInput.addEventListener("change", () => {
-        if (videoUploadInput.files.length > 0) {
-          // Удаляем класс hidden у кнопки загрузки, если файл выбран
-          uploadButton.classList.remove("hidden");
-        } else {
-          // В случае, если файл не выбран, можно скрыть кнопку снова (если это необходимо)
-          uploadButton.classList.add("hidden");
-        }
-      });
-      // Загрузка видео
-      uploadForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
-        const formData = new FormData(uploadForm);
-
-        const response = await fetch("/upload", {
-          method: "POST",
-          body: formData,
+        videoUploadInput.addEventListener("change", () => {
+            uploadButton.classList.toggle("hidden", videoUploadInput.files.length === 0);
         });
 
-        if (response.ok) {
-          const data = await response.json();
-          videoSource.src = data.video_path;
+        const showNotification = (message) => {
+            notification.innerText = message;
+            notification.style.opacity = 1;
 
-          videoPlayer.classList.remove("hidden");
-          videoPlayer.load();
+            setTimeout(() => {
+                notification.style.opacity = 0;
+            }, 3000);
+        };
 
-          metadataButtonContainer.classList.remove("hidden");
+        uploadForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            const formData = new FormData(uploadForm);
+            spinner.style.display = "block";
 
-          generateButton.disabled = false;
-          generateButton.classList.remove("disabled");
+            const response = await fetch("/upload", { method: "POST", body: formData });
+            spinner.style.display = "none";
 
-          if (data.metadata_exists) {
-            loadExistingButton.disabled = false;
-            loadExistingButton.classList.remove("disabled");
-          } else {
-          }
+            if (response.ok) {
+                const data = await response.json();
+                videoSource.src = data.video_path;
+                videoPlayer.classList.remove("hidden");
+                videoPlayer.load();
+                metadataButtonContainer.classList.remove("hidden");
 
-          alert("Видео загружено. Теперь можно сгенерировать метаданные.");
-        } else {
-          alert("Ошибка при загрузке видео.");
-        }
-      });
+                generateButton.disabled = false;
+                generateButton.classList.remove("disabled");
 
-      // Генерация метаданных
-      generateButton.addEventListener("click", async () => {
-        const response = await fetch("/generate-metadata", { method: "POST" });
+                loadExistingButton.disabled = !data.metadata_exists;
+                loadExistingButton.classList.toggle("disabled", !data.metadata_exists);
 
-        if (response.ok) {
-          const data = await response.json();
+                showNotification("Видео успешно загружено!");
+            } else {
+                console.error("Ошибка при загрузке видео.");
+            }
+        });
 
-          // Показываем контейнер метаданных и ссылку на загрузку
-          metadataContainer.classList.remove("hidden");
-          metadata = data.metadata;
-          metadataDownload.href = data.metadata_path; // Устанавливаем путь к метаданным
-          metadataDownload.classList.remove("hidden");
-          metadataDownload.classList.add("inline"); // Показываем ссылку на загрузку
+        generateButton.addEventListener("click", async () => {
+            spinner.style.display = "block";
+            const response = await fetch("/generate-metadata", { method: "POST" });
+            spinner.style.display = "none";
 
-          alert("Метаданные сгенерированы.");
-        } else {
-          alert("Ошибка при генерации метаданных.");
-        }
-      });
+            if (response.ok) {
+                const data = await response.json();
+                metadataContainer.classList.remove("hidden");
+                metadata = data.metadata;
+                metadataDownload.href = data.metadata_path;
+                metadataDownload.classList.remove("hidden");
 
-      // Загрузка существующего видео
-      loadExistingButton.addEventListener("click", async () => {
-        const response = await fetch("/load-existing", { method: "GET" });
+                showNotification("Метаданные успешно сгенерированы!");
+            } else {
+                console.error("Ошибка при генерации метаданных.");
+            }
+        });
 
-        if (response.ok) {
-          const data = await response.json();
-          videoSource.src = data.video_path;
+        loadExistingButton.addEventListener("click", async () => {
+            spinner.style.display = "block";
+            const response = await fetch("/load-existing", { method: "GET" });
+            spinner.style.display = "none";
 
-          // Показываем видео и метаданные
-          videoPlayer.classList.remove("hidden");
-          videoPlayer.load();
-          metadata = data.metadata;
+            if (response.ok) {
+                const data = await response.json();
+                videoSource.src = data.video_path;
+                videoPlayer.classList.remove("hidden");
+                videoPlayer.load();
+                metadata = data.metadata;
 
-          metadataContainer.classList.remove("hidden");
-          metadataDownload.href = data.metadata_path;
-          metadataDownload.classList.remove("hidden"); // Показываем ссылку на загрузку
-          metadataDownload.classList.add("inline");
+                metadataContainer.classList.remove("hidden");
+                metadataDownload.href = data.metadata_path;
+                metadataDownload.classList.remove("hidden");
 
-          alert("Загружено существующее видео и метаданные.");
-        } else {
-          alert("Ошибка при загрузке существующего видео.");
-        }
-      });
+                showNotification("Существующие метаданные успешно загружены!");
+            } else {
+                console.error("Ошибка при загрузке существующего видео.");
+            }
+        });
 
-      let currentFrameData = null;
-      videoPlayer.addEventListener("timeupdate", () => {
-        const fps = metadata[0].fps; // Предполагаем, что FPS одинаков для всех кадров
-        const currentTime = videoPlayer.currentTime;
-        const currentFrame = Math.floor(currentTime * fps);
-        const frameData = metadata.find((data) => data.frame === currentFrame);
+        videoPlayer.addEventListener("timeupdate", () => {
+            if (metadata) {
+                const currentFrame = Math.floor(videoPlayer.currentTime * metadata[0].fps);
+                const frameData = metadata.find((data) => data.frame === currentFrame);
 
-        if (frameData && frameData !== currentFrameData) {
-          currentFrameData = frameData; // Сохраняем новые данные как текущие
-
-          const itemHTML = `
-                    <div class="metadata-item mb-4">
-                        <h3 class="text-md font-semibold">Кадр ${
-                          frameData.frame
-                        }</h3>
-                        <div class="metadata-content break-words">
-                            <p><strong>Средний цвет:</strong> ${
-                              frameData.avg_color
-                            }</p>
-                            <p><strong>Статус движения:</strong> ${
-                              frameData.movement_status
-                            }</p>
-                            <h4 class="font-semibold">Обнаруженные объекты:</h4>
-                            <ul class="list-disc pl-5 break-words">
-                                ${frameData.detected_objects
-                                  .map(
-                                    (obj) => `
-                                    <li>
-                                        <strong>ID объекта:</strong> ${obj.object_id} <br>
-                                        <strong>Уверенность:</strong> ${obj.confidence} <br>
-                                        <strong>Координаты:</strong> ${obj.bbox}
-                                    </li>
-                                `
-                                  )
-                                  .join("")}
-                            </ul>
+                if (frameData) {
+                    const itemHTML = `
+                        <div class="metadata-item mb-4">
+                            <h3 class="text-md font-semibold">Кадр ${frameData.frame}</h3>
+                            <p>Статус движения: ${frameData.movement_status}</p>
+                            <p>Обнаруженные объекты: ${frameData.detected_objects.map(obj => `[${obj.object_id}] ${obj.object_name} (Уверенность: ${obj.confidence.toFixed(2)})`).join(", ")}</p>
                         </div>
-                    </div>`;
-          metadataContent.innerHTML = itemHTML;
-        }
-      });
+                    `;
+                    metadataContent.innerHTML = itemHTML;
+                }
+            }
+        });
     </script>
-  </body>
+</body>
 </html>
