@@ -118,7 +118,7 @@
             <div id="metadata-content1" class="mt-2 text-gray-300"></div>
           </div>
         </div>
-        <div class="w-1/5 flex flex-col justify-center items-center">
+        <div class="w-1/5 flex flex-col justify-center items-center gap-4">
           <div class="spinner" id="spinner" role="status"></div>
           <p
             id="upload-instruction"
@@ -132,6 +132,10 @@
           >
             Проанализировать
           </button>
+          <div
+            id="discrepancies-content"
+            class="text-gray-300 bg-gray-800 p-4 rounded-md text-gray-400 shadow-md text-center hidden"
+          ></div>
         </div>
         <div class="bg-red-900 p-4 rounded-lg shadow-lg w-2/5">
           <form
@@ -247,8 +251,14 @@
       ];
       const spinner = document.getElementById("spinner");
       const notification = document.getElementById("notification");
+      const discrepanciesContent = document.getElementById(
+        "discrepancies-content"
+      );
+
       let metadata = [null, null];
+      let metadataFileNames = [null, null];
       let metadataLoadedStatus = [false, false];
+      let discrepancies = null;
 
       function checkBothVideosUploaded() {
         if (metadataLoadedStatus.every((status) => status)) {
@@ -315,8 +325,50 @@
         });
       });
 
-      analyzeButton.addEventListener("click", () => {
-        // Ваша логика анализа после нажатия кнопки "Проанализировать"
+      const showDiscrepancies = (message) => {
+        discrepanciesContent.classList.remove("hidden");
+        discrepanciesContent.innerHTML = "";
+        videoPlayers.forEach((videoPlayer, index) => {
+          videoPlayer.currentTime = 0;
+          videoPlayer.play();
+        });
+      };
+
+      analyzeButton.addEventListener("click", async () => {
+        if (discrepancies !== null) {
+          showDiscrepancies();
+        }
+        const metadataSource = generateButtons[0].dataset.fileName;
+        const metadataDest = generateButtons[1].dataset.fileName;
+
+        spinner.style.display = "block";
+
+        // Отправка метаданных на сервер
+        const response = await fetch("/analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json", // Указываем, что данные в формате JSON
+          },
+          body: JSON.stringify({
+            filename_source: metadataSource,
+            filename_dest: metadataDest,
+          }),
+        });
+
+        spinner.style.display = "none";
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.discrepancies) {
+            discrepancies = result.discrepancies;
+            showDiscrepancies();
+            showNotification("Обнаружены несоответствия!");
+          } else {
+            showNotification(result.message);
+          }
+        } else {
+          showNotification("Ошибка анализа метаданных. Попробуйте снова.");
+        }
       });
 
       const showNotification = (message) => {
@@ -400,6 +452,41 @@
                     </div>
                 `;
               metadataContents[index].innerHTML = itemHTML; // Отображаем метаданные в соответствующем элементе
+            }
+
+            if (index === 0) {
+              const discrepanciesData = discrepancies.find((data) => {
+                return Math.abs(data.frame - currentFrame) <= 3;
+              });
+              if (discrepanciesData) {
+                const originalObjects =
+                  discrepanciesData.original_detected_objects
+                    .map(
+                      (obj) =>
+                        `[${
+                          obj.object_id
+                        }] Уверенность: ${obj.confidence.toFixed(2)}`
+                    )
+                    .join(", ");
+
+                const newObjects = discrepanciesData.new_detected_objects
+                  .map(
+                    (obj) =>
+                      `[${obj.object_id}] Уверенность: ${obj.confidence.toFixed(
+                        2
+                      )}`
+                  )
+                  .join(", ");
+                const itemHTML = `
+                  <div class="metadata-item mb-4">
+                    <h3 class="text-md font-semibold">Несоответствие в кадре ${discrepanciesData.frame}</h3>
+                    <p>Обнаруженные объекты в оригинале: ${originalObjects}</p>
+                    <p>Обнаруженные новые объекты: ${newObjects}</p>
+                    <p>Вероятность ошибки: ${discrepanciesData.error_mse}</p>
+                  </div>
+                `;
+                discrepanciesContent.innerHTML = itemHTML;
+              }
             }
           }
         });

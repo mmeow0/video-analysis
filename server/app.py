@@ -5,6 +5,7 @@ import json
 import cv2
 from ultralytics import YOLO
 import logging
+import tensorflow as tf
 
 logging.basicConfig(level=logging.INFO)
 
@@ -90,6 +91,7 @@ names = {
     78: 'фен',
     79: 'зубная щетка'
 }
+
 def convert_to_standard_types(data):
     if isinstance(data, np.ndarray):
         return data.tolist()
@@ -99,11 +101,88 @@ def convert_to_standard_types(data):
         return data.cpu().numpy().tolist()
     return data
 
+def extract_features(data, max_objects=5):  # max_objects - максимальное количество объектов
+    features = []
+    print(data)
+    for entry in data:
+        object_features = []
+        for obj in entry["detected_objects"][:max_objects]:  # Берем только до max_objects
+            object_features.append(obj['object_id'])
+            object_features.append(obj['confidence'])
+        # Если меньше max_objects, заполняем пустыми значениями
+        while len(object_features) < max_objects * 2:
+            object_features.append(0)  # Или используйте 0, если это более целесообразно
+        features.append(object_features)
+    # logging.info(f"Frame {features}")
+    return np.array(features, dtype=float)
+
+def train_autoencoder(data):
+    feature_dim = data.shape[1]
+    autoencoder = tf.keras.models.Sequential([
+        tf.keras.layers.Input(shape=(feature_dim,)),  # Используем Input вместо input_shape
+        tf.keras.layers.Dense(64, activation='relu'),
+        tf.keras.layers.Dense(32, activation='relu'),
+        tf.keras.layers.Dense(64, activation='relu'),
+        tf.keras.layers.Dense(feature_dim, activation='sigmoid')
+    ])
+    autoencoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), loss=tf.keras.losses.MeanSquaredError())
+    autoencoder.fit(data, data, epochs=50, batch_size=16, shuffle=True)
+    return autoencoder
+
+def normalize_features(features):
+    # Применяем нормализацию
+    return (features - np.mean(features, axis=0)) / np.std(features, axis=0)
+
+def sort_detected_objects(objects):
+    return sorted(objects, key=lambda x: (x['object_id'], x['confidence']))
+
+def compare_detected_objects(original_objects, new_objects):
+    # Сравниваем отсортированные объекты
+    sorted_original = sort_detected_objects(original_objects)
+    sorted_new = sort_detected_objects(new_objects)
+
+    return sorted_original == sorted_new
+
+# Функция для выявления аномалий
+def detect_anomalies(original_metadata, new_metadata, autoencoder, threshold=5.0):
+    original_features = extract_features(original_metadata)
+    new_features = extract_features(new_metadata)
+
+    if original_features.size == 0 or new_features.size == 0:
+        logging.error("Нет доступных признаков для сравнения.")
+        return []
+
+    original_features = normalize_features(original_features)
+    new_features = normalize_features(new_features)
+
+    reconstructed = autoencoder.predict(new_features)
+    mse = np.mean(np.power(new_features - reconstructed, 2), axis=1)
+
+    discrepancies = []
+    for i, error in enumerate(mse):
+        if error > threshold:
+            original_objects = original_metadata[i]['detected_objects']
+            new_objects = new_metadata[i]['detected_objects']
+
+            # Сравнение объектов
+            objects_are_equal = compare_detected_objects(original_objects, new_objects)
+            if not objects_are_equal:
+                discrepancy = {
+                    'frame': new_metadata[i]['frame'],
+                    'original_detected_objects': original_objects,
+                    'new_detected_objects': new_objects,
+                    'error_mse': error
+                }
+                discrepancies.append(discrepancy)
+    return discrepancies
+
 app = Flask(__name__, static_folder='../static', static_url_path='/static')
 UPLOAD_FOLDER = 'uploads'  # Папка для загрузки в пределах static/uploads
 app.config['UPLOAD_FOLDER'] = os.path.join(app.static_folder, UPLOAD_FOLDER)
 
 uploaded_videos = {}
+autoencoder = None  # Будем сохранять обученный автоэнкодер здесь
+original_features = None  # Сохраняем признаки оригинальных метаданных
 
 @app.route('/')
 def index():
@@ -135,6 +214,7 @@ def upload_video():
 
 @app.route('/generate_metadata/<filename>', methods=['POST'])
 def generate_metadata(filename=''):
+    global autoencoder, original_features
     if filename not in uploaded_videos:
         return jsonify({'error': 'Нет загруженного видео'}), 400
 
@@ -142,11 +222,17 @@ def generate_metadata(filename=''):
     metadata, metadata_filename = extract_metadata(latest_video['video_path'])
 
     latest_video['metadata_path'] = url_for('static', filename=f'uploads/{metadata_filename}', _external=True)
+    if original_features is None and autoencoder is None:
+        original_features = extract_features(metadata)
+        original_features = normalize_features(original_features)
+        autoencoder = train_autoencoder(original_features)
 
     return jsonify({'metadata': metadata, 'metadata_path': latest_video['metadata_path']})
 
 @app.route('/load_metadata/<filename>', methods=['GET'])
 def load_existing(filename=''):
+    global autoencoder, original_features
+
     if filename not in uploaded_videos:
         return jsonify({'error': 'Нет загруженного видео.'}), 400
 
@@ -161,11 +247,61 @@ def load_existing(filename=''):
     with open(latest_video['metadata_path'], 'r') as f:
         metadata = json.load(f)
 
+    if original_features is None and autoencoder is None:
+        original_features = extract_features(metadata)
+        original_features = normalize_features(original_features)
+        autoencoder = train_autoencoder(original_features)
+    
     return jsonify({
         'video_path': url_for('static', filename=f'uploads/{filename}', _external=True),
         'metadata': metadata,
         'metadata_path': latest_video['metadata_path']
     })
+
+@app.route('/analyze', methods=['POST'])
+def analyze():
+    global autoencoder, original_features
+
+    # Получаем имя файла метаданных из запроса
+    data = request.get_json()
+    video_source = data.get('filename_source')
+    video_dest = data.get('filename_dest')
+    if not video_source or not video_dest:
+        return jsonify({'error': 'Имя файлов метаданных не предоставлено.'}), 400
+
+    metadata_filename_source = f"{os.path.splitext(video_source)[0]}_metadata.json"
+    metadata_filename_dest = f"{os.path.splitext(video_dest)[0]}_metadata.json"
+    
+    # Определяем путь к файлу метаданных
+    metadata__source_path = os.path.join(app.config['UPLOAD_FOLDER'], metadata_filename_source)
+    metadata_dest_path = os.path.join(app.config['UPLOAD_FOLDER'], metadata_filename_dest)
+    
+    # Проверяем существование файла метаданных
+    if not os.path.exists(metadata__source_path) or not os.path.exists(metadata_dest_path):
+        return jsonify({'error': 'Метаданные не найдены.'}), 404
+
+    # Читаем содержимое файла
+    with open(metadata__source_path, 'r') as f:
+        try:
+            original_metadata = json.load(f)  # Преобразуем файл в JSON
+        except json.JSONDecodeError as e:
+            return jsonify({'error': f'Ошибка разбора JSON: {str(e)}'}), 400
+
+    with open(metadata_dest_path, 'r') as f:
+        try:
+            dest_metadata = json.load(f)  # Преобразуем файл в JSON
+        except json.JSONDecodeError as e:
+            return jsonify({'error': f'Ошибка разбора JSON: {str(e)}'}), 400
+
+    # Выявление аномалий в новых метаданных
+    discrepancies = detect_anomalies(original_metadata, dest_metadata, autoencoder)
+
+    # Возвращаем результат
+    if not discrepancies:
+        return jsonify({'message': 'Аномалии не обнаружены.'})
+    else:
+        return jsonify({'discrepancies': discrepancies})
+
 
 # Функция создания метаданных
 def extract_metadata(video_path):
