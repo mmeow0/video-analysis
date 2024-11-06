@@ -134,7 +134,8 @@
           </button>
           <div
             id="discrepancies-content"
-            class="text-gray-300 bg-gray-800 p-4 rounded-md text-gray-400 shadow-md text-center hidden"
+            class="flex flex-col gap-4 items-center text-gray-300 bg-gray-800 p-4 rounded-md shadow-md w-full hidden"
+            style="max-height: 700px; overflow-y: scroll;"
           ></div>
         </div>
         <div class="bg-red-900 p-4 rounded-lg shadow-lg w-2/5">
@@ -335,9 +336,6 @@
       };
 
       analyzeButton.addEventListener("click", async () => {
-        if (discrepancies !== null) {
-          showDiscrepancies();
-        }
         const metadataSource = generateButtons[0].dataset.fileName;
         const metadataDest = generateButtons[1].dataset.fileName;
 
@@ -363,6 +361,74 @@
             discrepancies = result.discrepancies;
             showDiscrepancies();
             showNotification("Обнаружены несоответствия!");
+            discrepanciesContent.innerHTML = `<h2 class="text-xl font-semibold text-center">Обнаруженные несоответствия в кадрах:</h2>`;
+
+            discrepancies.forEach((discrepanciesData) => {
+              console.log(discrepanciesData);
+
+              const originalObjects =
+                discrepanciesData.original_detected_objects
+                  .map(
+                    (obj) =>
+                      `[${obj.object_id}] Уверенность: ${obj.confidence.toFixed(
+                        2
+                      )}`
+                  )
+                  .join(", ");
+
+              const newObjects = discrepanciesData.new_detected_objects
+                .map(
+                  (obj) =>
+                    `[${obj.object_id}] Уверенность: ${obj.confidence.toFixed(
+                      2
+                    )}`
+                )
+                .join(", ");
+
+              itemHTML = `
+                  <div class="metadata-item mb-4 p-4 rounded-lg shadow-lg border border-sky-500">
+                    <div class="flex flex-row items-center gap-4 mb-2">
+                      <h3 class="text-md font-semibold">Кадр ${
+                        discrepanciesData.frame
+                      }:</h3>
+                      <button class="object-button bg-gray-600 text-white py-2 px-4 rounded-md hover:bg-gray-700" data-object-id="${
+                        discrepanciesData.frame
+                      }">
+                        Перейти
+                      </button>
+                    </div>
+                    <div class="text-gray-500 text-xs mt-2">
+                      <p>Объекты в оригинале: ${originalObjects}</p>
+                      <p>Обнаруженные новые объекты: ${newObjects}</p>
+                      <p>MSE: ${discrepanciesData.error_mse.toFixed(2)}</p>
+                    </div>
+                  </div>
+                `;
+              discrepanciesContent.insertAdjacentHTML("beforeend", itemHTML);
+            });
+
+            const discrepanciesPath = result.discrepancies_path;
+            discrepanciesContent.insertAdjacentHTML(
+              "beforeend",
+              `<div class="mt-4">
+                  <a href="${discrepanciesPath}" class="text-blue-500 hover:underline">
+                    Скачать файл с несоответствиями
+                  </a>
+              </div>`
+            );
+
+            document.querySelectorAll(".object-button").forEach((button) => {
+              button.addEventListener("click", (event) => {
+                const objectId =
+                  event.currentTarget.getAttribute("data-object-id");
+                videoPlayers.forEach((videoPlayer, index) => {
+                  const timeInSeconds = objectId / metadata[0][0].fps;
+                  videoPlayer.currentTime = timeInSeconds;
+                  videoPlayer.play();
+                });
+              });
+            });
+            analyzeButton.classList.add("hidden");
           } else {
             showNotification(result.message);
           }
@@ -452,41 +518,6 @@
                     </div>
                 `;
               metadataContents[index].innerHTML = itemHTML; // Отображаем метаданные в соответствующем элементе
-            }
-
-            if (index === 0) {
-              const discrepanciesData = discrepancies.find((data) => {
-                return Math.abs(data.frame - currentFrame) <= 3;
-              });
-              if (discrepanciesData) {
-                const originalObjects =
-                  discrepanciesData.original_detected_objects
-                    .map(
-                      (obj) =>
-                        `[${
-                          obj.object_id
-                        }] Уверенность: ${obj.confidence.toFixed(2)}`
-                    )
-                    .join(", ");
-
-                const newObjects = discrepanciesData.new_detected_objects
-                  .map(
-                    (obj) =>
-                      `[${obj.object_id}] Уверенность: ${obj.confidence.toFixed(
-                        2
-                      )}`
-                  )
-                  .join(", ");
-                const itemHTML = `
-                  <div class="metadata-item mb-4">
-                    <h3 class="text-md font-semibold">Несоответствие в кадре ${discrepanciesData.frame}</h3>
-                    <p>Обнаруженные объекты в оригинале: ${originalObjects}</p>
-                    <p>Обнаруженные новые объекты: ${newObjects}</p>
-                    <p>Вероятность ошибки: ${discrepanciesData.error_mse}</p>
-                  </div>
-                `;
-                discrepanciesContent.innerHTML = itemHTML;
-              }
             }
           }
         });

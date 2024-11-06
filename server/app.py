@@ -144,7 +144,7 @@ def compare_detected_objects(original_objects, new_objects):
     return sorted_original == sorted_new
 
 # Функция для выявления аномалий
-def detect_anomalies(original_metadata, new_metadata, autoencoder, threshold=5.0):
+def detect_anomalies(original_metadata, new_metadata, autoencoder, threshold=10.0):
     original_features = extract_features(original_metadata)
     new_features = extract_features(new_metadata)
 
@@ -296,11 +296,21 @@ def analyze():
     # Выявление аномалий в новых метаданных
     discrepancies = detect_anomalies(original_metadata, dest_metadata, autoencoder)
 
+    discrepancies_filename = f"{os.path.splitext(video_source)[0]}{os.path.splitext(video_dest)[0]}_discrepancies.json"
+    discrepancies_path = os.path.join(app.config['UPLOAD_FOLDER'], discrepancies_filename)
+    
+    # Сохраняем список discrepancies в JSON файл
+    with open(discrepancies_path, 'w') as f:
+        json.dump(discrepancies, f, ensure_ascii=False, indent=4)
+
     # Возвращаем результат
     if not discrepancies:
         return jsonify({'message': 'Аномалии не обнаружены.'})
     else:
-        return jsonify({'discrepancies': discrepancies})
+        return jsonify({
+            'discrepancies': discrepancies,
+            'discrepancies_path': url_for('static', filename=f'uploads/{discrepancies_filename}', _external=True),
+            })
 
 
 # Функция создания метаданных
